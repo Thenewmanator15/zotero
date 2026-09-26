@@ -757,9 +757,13 @@ describe("Zotero.Sync.Storage.Local", function () {
 			var json1 = item1.toJSON();
 			var json3 = item3.toJSON();
 			// Change remote mtimes and hashes
-			json1.mtime = new Date().getTime() + 10000;
+			//
+			// Make the remote mtimes relative to the local files' mtimes rather than the current
+			// time, since copying a file preserves its mtime on Windows, so an imported file can be
+			// older than the import
+			json1.mtime = await item1.attachmentModificationTime + 10000;
 			json1.md5 = 'f4ce1167f3a854896c257a0cc1ac387f';
-			json3.mtime = new Date().getTime() - 10000;
+			json3.mtime = await item3.attachmentModificationTime - 10000;
 			json3.md5 = 'fcd080b1c2cad562237823ec27671bbd';
 			await Zotero.Sync.Data.Local.saveCacheObjects('item', libraryID, [json1, json3]);
 			
