@@ -130,10 +130,12 @@ import ReactDOM from "react-dom";
 				throw new Error("'left' and 'right' cannot both be deleted");
 			}
 			
-			// Check for note or attachment
-			this.type = this._getTypeFromObject(
-				this._data.left.deleted ? this._data.right : this._data.left
-			);
+			// Check for note or attachment, unless the caller set this up as a file conflict
+			if (this.type != 'file') {
+				this.type = this._getTypeFromObject(
+					this._data.left.deleted ? this._data.right : this._data.left
+				);
+			}
 			
 			var showButton = this.type != 'item';
 			

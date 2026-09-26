@@ -862,5 +862,43 @@ describe("Zotero.Sync.Storage.Local", function () {
 			assert.isNull(item1.attachmentSyncedModificationTime);
 			assert.isNull(item1.attachmentSyncedHash);
 		});
+		
+		it("should show file conflicts as file conflicts rather than item conflicts", async function () {
+			var libraryID = Zotero.Libraries.userLibraryID;
+			
+			var item = await importFileAttachment('test.png');
+			item.version = 10;
+			await item.saveTx();
+			
+			var json = item.toJSON();
+			await Zotero.Sync.Data.Local.saveCacheObjects('item', libraryID, [json]);
+			
+			item.attachmentSyncState = "in_conflict";
+			await item.saveTx({ skipAll: true });
+			
+			var promise = waitForWindow('chrome://zotero/content/merge.xhtml', async function (dialog) {
+				var doc = dialog.document;
+				var wizard = doc.querySelector('wizard');
+				var mergeGroup = wizard.getElementsByTagName('merge-group')[0];
+				
+				try {
+					assert.equal(mergeGroup.type, 'file');
+					for (let pane of [mergeGroup.leftPane, mergeGroup.rightPane]) {
+						assert.equal(pane.objectBox.mode, 'filemerge');
+					}
+					assert.equal(
+						doc.getElementById('zotero-merge-instructions').textContent,
+						Zotero.getString('sync.conflict.fileChanged', wizard.getButton('finish').label)
+					);
+				}
+				finally {
+					// Close the modal window even if an assertion fails, so the failure is
+					// reported instead of a timeout
+					wizard.getButton('finish').click();
+				}
+			});
+			await Zotero.Sync.Storage.Local.resolveConflicts(libraryID);
+			await promise;
+		});
 	})
 })
