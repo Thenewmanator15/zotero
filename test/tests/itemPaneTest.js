@@ -1921,6 +1921,112 @@ describe("Item pane", function () {
 			// The note should be added to the same collection(s) as the attachment
 			assert.sameMembers(attachment.getCollections(), note.getCollections());
 		});
+
+		// The merge window replaces its attachment boxes whenever the selected version changes,
+		// which empties the old box while it may still be rendering
+		describe("Rendering after the box is removed", function () {
+			let container, box, rejections;
+			let onRejection = event => rejections.push(event.reason);
+
+			beforeEach(function () {
+				rejections = [];
+				win.addEventListener('unhandledrejection', onRejection);
+				container = doc.createXULElement('vbox');
+				doc.documentElement.append(container);
+			});
+
+			afterEach(function () {
+				sinon.restore();
+				container.remove();
+				win.removeEventListener('unhandledrejection', onRejection);
+			});
+
+			function createBox(mode, item) {
+				box = doc.createXULElement('attachment-box');
+				container.append(box);
+				box.mode = mode;
+				box.item = item;
+				return box;
+			}
+
+			// Remove the box when `obj[method]()` is called, i.e., while updateInfo() awaits it
+			function removeBoxOnCall(obj, method) {
+				let orig = obj[method];
+				return sinon.stub(obj, method).callsFake(function (...args) {
+					box.remove();
+					return orig.apply(this, args);
+				});
+			}
+
+			it("should stop if removed while checking whether the file exists", async function () {
+				let attachment = await importFileAttachment('test.png');
+				createBox('merge', attachment);
+				let stub = removeBoxOnCall(attachment, 'fileExists');
+				await box.updateInfo();
+				assert.isTrue(stub.called);
+			});
+
+			it("should stop if removed while checking whether the file can be indexed", async function () {
+				let attachment = await importFileAttachment('test.pdf');
+				createBox('view', attachment);
+				let stub = removeBoxOnCall(Zotero.FullText, 'canIndex');
+				await box.updateInfo();
+				assert.isTrue(stub.called);
+			});
+
+			it("should not show the page count if removed before it is loaded", async function () {
+				let attachment = await importFileAttachment('test.pdf');
+				let deferred = Zotero.Promise.defer();
+				sinon.stub(Zotero.Fulltext, 'getPages').returns(deferred.promise);
+				createBox('view', attachment);
+				await box.updateInfo();
+				box.remove();
+				deferred.resolve({ total: 1 });
+				await Zotero.Promise.delay(50);
+				assert.lengthOf(rejections, 0, rejections.join('\n'));
+			});
+
+			it("should not show the modification time if removed before it is loaded", async function () {
+				let attachment = await importFileAttachment('test.png');
+				let deferred = Zotero.Promise.defer();
+				sinon.stub(attachment, 'attachmentModificationTime').get(() => deferred.promise);
+				createBox('view', attachment);
+				await box.updateInfo();
+				box.remove();
+				deferred.resolve(Date.now());
+				await Zotero.Promise.delay(50);
+				assert.lengthOf(rejections, 0, rejections.join('\n'));
+			});
+		});
+
+		it("should not apply a render of the previous item after the item changes", async function () {
+			let missing = await importFileAttachment('test.png');
+			await IOUtils.remove(missing.getFilePath());
+			let existing = await importFileAttachment('test.png');
+
+			let box = doc.createXULElement('attachment-box');
+			doc.documentElement.append(box);
+			try {
+				box.mode = 'edit';
+				box.item = existing;
+				let deferred = Zotero.Promise.defer();
+				sinon.stub(existing, 'fileExists').returns(deferred.promise);
+				let stalePromise = box.updateInfo();
+
+				box.item = missing;
+				await box.updateInfo();
+				assert.isTrue(box._id('fileName').hasAttribute('readonly'));
+
+				deferred.resolve(true);
+				await stalePromise;
+				// The file of the displayed item is missing, so its name still can't be edited
+				assert.isTrue(box._id('fileName').hasAttribute('readonly'));
+			}
+			finally {
+				sinon.restore();
+				box.remove();
+			}
+		});
 	});
 
 

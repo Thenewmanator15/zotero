@@ -398,7 +398,9 @@
 			let indexStatusRow = this._id('indexStatusRow');
 			let selectButton = this._id('select-button');
 
-			let fileExists = this._item.isFileAttachment() && await this._item.fileExists();
+			let item = this._item;
+			let fileExists = item.isFileAttachment() && await item.fileExists();
+			if (this._isStaleRender(item)) return;
 			let isMerge = ["merge", "mergeedit", "filemerge"].includes(this.mode);
 			let isImportedURL = this.item.attachmentLinkMode == Zotero.Attachments.LINK_MODE_IMPORTED_URL;
 			let isLinkedURL = this.item.attachmentLinkMode == Zotero.Attachments.LINK_MODE_LINKED_URL;
@@ -462,7 +464,7 @@
 			if (this.displayPages && this._item.isPDFAttachment()) {
 				Zotero.Fulltext.getPages(this.item.id)
 				.then(function (pages) {
-					if (!this.item) return;
+					if (this._isStaleRender(item)) return;
 					
 					pages = pages ? pages.total : null;
 					if (pages) {
@@ -490,7 +492,7 @@
 				else {
 					this.item.attachmentModificationTime
 					.then(function (mtime) {
-						if (!this._id) return;
+						if (this._isStaleRender(item)) return;
 						
 						if (mtime) {
 							this._id("dateModified").value = new Date(mtime).toLocaleString();
@@ -504,7 +506,9 @@
 			}
 			
 			// Full-text index information
-			if (this.displayIndexed && fileExists && await Zotero.FullText.canIndex(this.item)) {
+			let canIndex = this.displayIndexed && fileExists && await Zotero.FullText.canIndex(this.item);
+			if (this._isStaleRender(item)) return;
+			if (canIndex) {
 				this.updateItemIndexedState()
 					.then(function () {
 						if (!this.item) return;
@@ -539,6 +543,12 @@
 
 			// Hide the rename button for cases where it's not possible to rename from parent, not editable, the file does not exist, or the file name would not be changed
 			this._id("rename-from-parent").hidden = !isRenamePossible || !this.editable || !fileExists || !(await canRenameFileFromParent(this._item));
+		}
+
+		// Whether the box has been emptied (e.g., removed from the merge window) or given another
+		// item since a render of `item` started
+		_isStaleRender(item) {
+			return !this.initialized || this._item !== item;
 		}
 
 		async updatePreview() {
