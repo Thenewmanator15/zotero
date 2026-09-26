@@ -360,6 +360,9 @@ import ReactDOM from "react-dom";
 			
 			if (val.deleted) {
 				this.deleted = true;
+				// A deleted version has no parent to show, and the row may still hold the
+				// previous conflict's parent
+				this.parentRow.hidden = true;
 				return;
 			}
 			

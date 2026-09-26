@@ -1552,7 +1552,60 @@ describe("Zotero.Sync.Data.Local", function () {
 			
 			await promise;
 		});
-		
+
+		it("should not show a previous conflict's parent for a deleted version", async function () {
+			var parentItem = await createDataObject('item', { title: "Parent" });
+			var note = new Zotero.Item('note');
+			note.parentKey = parentItem.key;
+			note.setNote("Test");
+			await note.saveTx();
+			var noteJSON = note.toJSON();
+			var item = await createDataObject('item');
+
+			var promise = waitForWindow('chrome://zotero/content/merge.xhtml', function (dialog) {
+				var doc = dialog.document;
+				var wizard = doc.querySelector('wizard');
+				var mergeGroup = wizard.getElementsByTagName('merge-group')[0];
+
+				// 1: both versions of the child note show its parent
+				assert.isFalse(mergeGroup.leftPane.parentRow.hidden);
+				wizard.getButton('next').click();
+
+				// 2: the deleted local version of a top-level item has no parent to show
+				assert.isTrue(mergeGroup.leftPane.deleted);
+				assert.isTrue(mergeGroup.leftPane.parentRow.hidden);
+				assert.isTrue(mergeGroup.rightPane.parentRow.hidden);
+
+				wizard.getButton('finish').click();
+			});
+
+			Zotero.Sync.Data.Local.showConflictResolutionWindow([
+				{
+					libraryID: note.libraryID,
+					key: note.key,
+					processed: false,
+					conflict: true,
+					left: noteJSON,
+					right: Object.assign({}, noteJSON, { note: "Test 2" }),
+					changes: [],
+					conflicts: []
+				},
+				{
+					libraryID: item.libraryID,
+					key: item.key,
+					processed: false,
+					conflict: true,
+					left: {
+						deleted: true,
+						dateDeleted: "2016-07-07 12:34:56"
+					},
+					right: item.toJSON()
+				}
+			]);
+
+			await promise;
+		});
+
 		it("should switch types by showing regular item after note", async function () {
 			var note = await createDataObject('item', { itemType: 'note' });
 			var item = await createDataObject('item');
